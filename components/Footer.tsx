@@ -1,28 +1,16 @@
 import React from 'react';
 
 export default function Footer() {
-  const currentYear = new Date().getFullYear();
-
   return (
-    <footer className="bg-[#0b1f3d] text-slate-300 border-t border-[#1b437e] mt-auto">
-      <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-xs sm:text-sm">
-          
-          <div>
-            <span className="font-semibold text-white tracking-wider">
-              KARWAN-E-RAHIAN-E-NOOR
-            </span>
-            <span className="text-slate-400"> &copy; {currentYear} | All Rights Reserved.</span>
-          </div>
-
-          <div className="flex items-center gap-1.5 bg-[#122b52] px-3.5 py-1.5 rounded-full border border-blue-500/20 text-blue-200">
-            <span>Powered by</span>
-            <span className="font-bold text-amber-400 tracking-wide">
-              Saqqa Software Service
-            </span>
-          </div>
-
-        </div>
+    <footer className="bg-[#0b2447] text-white py-2.5 px-4 text-center flex-shrink-0 border-t border-white/10">
+      <div className="max-w-md mx-auto flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2">
+        <p className="text-[10px] sm:text-xs font-medium text-slate-300 tracking-wide">
+          <span className="font-bold text-amber-400">KARWAN-E-RAHIAN-E-NOOR</span> © 2026
+        </p>
+        <span className="hidden sm:inline text-slate-500">|</span>
+        <p className="text-[10px] sm:text-xs font-semibold text-blue-200 tracking-wider">
+          Powered by Saqaa Software Service
+        </p>
       </div>
     </footer>
   );
