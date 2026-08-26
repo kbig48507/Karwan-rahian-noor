@@ -69,7 +69,7 @@ export default function RegisterZair() {
     }
   };
 
-  // AI Smart Passport Scanner
+  // AI Smart Passport Scanner & Face Extraction
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -84,7 +84,7 @@ export default function RegisterZair() {
       reader.onload = async (readerEvent) => {
         const fullBase64 = readerEvent.target?.result as string;
 
-        // 1. Crop face for profile photo
+        // 1. Precise Face Cropping from Passport
         const img = document.createElement('img');
         img.src = fullBase64;
         img.onload = async () => {
@@ -93,10 +93,10 @@ export default function RegisterZair() {
           canvas.width = 300;
           canvas.height = 360;
 
-          // Cropping specific portrait area
+          // Standard Pakistani passport face coordinates
           ctx?.drawImage(
             img, 
-            img.width * 0.03, img.height * 0.22, img.width * 0.25, img.height * 0.42, 
+            img.width * 0.05, img.height * 0.23, img.width * 0.24, img.height * 0.42, 
             0, 0, canvas.width, canvas.height
           );
 
@@ -104,7 +104,7 @@ export default function RegisterZair() {
           setPhotoBase64(croppedFace);
           setImageSizeKb(Math.round((croppedFace.length * 0.75) / 1024));
 
-          // 2. Call Gemini AI API Route
+          // 2. Call Backend AI Parser
           const response = await fetch('/api/scan-passport', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -113,7 +113,9 @@ export default function RegisterZair() {
 
           const data = await response.json();
 
-          if (!response.ok) throw new Error(data.error || 'AI scanning failed');
+          if (!response.ok) {
+            throw new Error(data.error || 'AI scanning request failed');
+          }
 
           setFormData((prev) => ({
             ...prev,
@@ -127,14 +129,14 @@ export default function RegisterZair() {
             address: data.address || prev.address,
           }));
 
-          setSuccessMsg('AI Scanned Successfully! All fields auto-filled.');
+          setSuccessMsg('Passport scanned successfully! All details auto-filled.');
           setScanning(false);
           setScanStatus('');
         };
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setErrorMsg(err.message || 'AI could not read the image.');
+      setErrorMsg(err.message || 'Could not scan passport. Please verify API key.');
       setScanning(false);
       setScanStatus('');
     }
