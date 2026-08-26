@@ -5,14 +5,7 @@ import { useRouter } from 'next/router';
 import { 
   UserPlus, 
   User, 
-  CreditCard, 
-  Phone, 
-  MapPin, 
-  Briefcase, 
-  Mail, 
-  Lock, 
   Camera, 
-  Calendar, 
   CheckCircle2, 
   AlertCircle,
   ArrowLeft
@@ -25,7 +18,6 @@ export default function RegisterAgent() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Form State
   const [formData, setFormData] = useState({
     regNumber: 'KRN001',
     fullName: '',
@@ -46,14 +38,13 @@ export default function RegisterAgent() {
   const [photoBase64, setPhotoBase64] = useState<string>('');
   const [imageSizeKb, setImageSizeKb] = useState<number | null>(null);
 
-  // Auto-generate serial Reg Number (KRN001, KRN002, ...)
   useEffect(() => {
     fetchLatestRegNumber();
   }, []);
 
   const fetchLatestRegNumber = async () => {
     try {
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('agents')
         .select('reg_number')
         .order('created_at', { ascending: false })
@@ -69,12 +60,11 @@ export default function RegisterAgent() {
         }
       }
       setFormData((prev) => ({ ...prev, regNumber: 'KRN001' }));
-    } catch (err) {
+    } catch {
       setFormData((prev) => ({ ...prev, regNumber: 'KRN001' }));
     }
   };
 
-  // Image Compressor to ~50KB using HTML Canvas
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -94,7 +84,6 @@ export default function RegisterAgent() {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, canvas.width, canvas.height);
 
-        // Compress quality iteratively until under 50KB
         let quality = 0.7;
         let dataUrl = canvas.toDataURL('image/jpeg', quality);
 
@@ -122,7 +111,6 @@ export default function RegisterAgent() {
     setSuccessMsg('');
 
     try {
-      // 1. Insert into agents table
       const { error: agentError } = await supabase.from('agents').insert([
         {
           reg_number: formData.regNumber,
@@ -144,7 +132,6 @@ export default function RegisterAgent() {
 
       if (agentError) throw agentError;
 
-      // 2. Insert into users table for login authentication
       const { error: userError } = await supabase.from('users').insert([
         {
           username: formData.username.trim(),
@@ -174,290 +161,219 @@ export default function RegisterAgent() {
         <title>Agent Registration - Karwan-e-Rahian-e-Noor</title>
       </Head>
 
-      <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      <div className="w-full space-y-3">
         
-        {/* Top Breadcrumb & Actions */}
+        {/* Top Action Bar */}
         <div className="flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-1.5 text-xs font-bold text-[#0f2d59] hover:underline"
+            className="flex items-center gap-1.5 text-xs font-bold text-[#0b2447] hover:underline"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Back to Dashboard</span>
           </button>
 
-          <span className="px-4 py-1.5 bg-[#0f2d59] text-amber-400 font-mono font-bold text-xs rounded-full border border-blue-900 shadow-sm">
+          <span className="px-3.5 py-1 bg-[#0b2447] text-amber-400 font-mono font-bold text-xs rounded-full shadow-sm">
             REG ID: {formData.regNumber}
           </span>
         </div>
 
-        {/* Main Card */}
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* White Fit Container */}
+        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80">
           
-          <div className="bg-[#0f2d59] p-6 text-white flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-white/10 rounded-2xl border border-white/20">
-                <UserPlus className="w-6 h-6 text-amber-400" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold tracking-tight uppercase">Agent Registration Form</h1>
-                <p className="text-xs text-blue-200">Register new affiliated agency or sub-agent credentials</p>
-              </div>
-            </div>
+          <div className="text-center pb-3 border-b border-slate-100 mb-4">
+            <h2 className="text-xs sm:text-base font-black text-slate-800 tracking-wider uppercase flex items-center justify-center gap-2">
+              <UserPlus className="w-4 h-4 text-[#0b2447]" />
+              <span>AGENT REGISTRATION FORM</span>
+            </h2>
+            <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">
+              Register new affiliated agency credentials and personal details
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="p-6 sm:p-8 space-y-8">
+          {errorMsg && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="mb-4 p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-medium flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+              <span>{successMsg}</span>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4 text-left">
             
-            {errorMsg && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 font-medium flex items-center gap-2">
-                <AlertCircle className="w-5 h-5 flex-shrink-0" />
-                <span>{errorMsg}</span>
-              </div>
-            )}
-
-            {successMsg && (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-700 font-medium flex items-center gap-2">
-                <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                <span>{successMsg}</span>
-              </div>
-            )}
-
-            {/* Photo & Identity Section */}
-            <div className="flex flex-col sm:flex-row items-center gap-6 p-4 bg-slate-50 border border-slate-200 rounded-2xl">
-              <div className="relative w-28 h-28 rounded-2xl overflow-hidden bg-slate-200 border-2 border-dashed border-slate-400 flex items-center justify-center flex-shrink-0">
+            {/* Photo Section */}
+            <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+              <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0">
                 {photoBase64 ? (
                   <Image src={photoBase64} alt="Agent Preview" fill className="object-cover" />
                 ) : (
-                  <User className="w-10 h-10 text-slate-400" />
+                  <User className="w-6 h-6 text-slate-400" />
                 )}
               </div>
-              <div className="flex-grow space-y-2 text-center sm:text-left">
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                  Agent Profile Picture (Auto-Compressed ≤ 50KB)
-                </label>
-                <label className="inline-flex items-center gap-2 px-4 py-2 bg-[#0f2d59] text-white rounded-xl text-xs font-semibold cursor-pointer hover:bg-[#1b437e] transition">
-                  <Camera className="w-4 h-4 text-amber-400" />
-                  <span>Choose Photo</span>
+              <div className="flex-1">
+                <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0b2447] text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#163a6f] transition">
+                  <Camera className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Upload Photo</span>
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
                 {imageSizeKb !== null && (
-                  <p className="text-[11px] font-semibold text-emerald-600">
-                    Compressed Size: {imageSizeKb} KB (Optimized)
-                  </p>
+                  <span className="block text-[10px] font-semibold text-emerald-600 mt-1">
+                    Size: {imageSizeKb} KB (Optimized)
+                  </span>
                 )}
               </div>
             </div>
 
-            {/* Section 1: Personal Particulars */}
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <User className="w-4 h-4 text-[#0f2d59]" />
-                <span>Personal Information</span>
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-                
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Full Name *</label>
-                  <input
-                    type="text"
-                    required
-                    name="fullName"
-                    value={formData.fullName}
-                    onChange={handleChange}
-                    placeholder="e.g. Muhammad Raza"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+            {/* Input Fields */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Full Name *</label>
+                <input
+                  type="text"
+                  required
+                  name="fullName"
+                  value={formData.fullName}
+                  onChange={handleChange}
+                  placeholder="Full name"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Father Name</label>
-                  <input
-                    type="text"
-                    name="fatherName"
-                    value={formData.fatherName}
-                    onChange={handleChange}
-                    placeholder="Father Name"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Father Name</label>
+                <input
+                  type="text"
+                  name="fatherName"
+                  value={formData.fatherName}
+                  onChange={handleChange}
+                  placeholder="Father name"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">CNIC Number *</label>
-                  <input
-                    type="text"
-                    required
-                    name="cnic"
-                    value={formData.cnic}
-                    onChange={handleChange}
-                    placeholder="38201-XXXXXXX-X"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">CNIC Number *</label>
+                <input
+                  type="text"
+                  required
+                  name="cnic"
+                  value={formData.cnic}
+                  onChange={handleChange}
+                  placeholder="38201-XXXXXXX-X"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Passport Number</label>
-                  <input
-                    type="text"
-                    name="passportNumber"
-                    value={formData.passportNumber}
-                    onChange={handleChange}
-                    placeholder="e.g. AB1234567"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Passport Number</label>
+                <input
+                  type="text"
+                  name="passportNumber"
+                  value={formData.passportNumber}
+                  onChange={handleChange}
+                  placeholder="Passport number"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Date of Birth</label>
-                  <input
-                    type="date"
-                    name="dob"
-                    value={formData.dob}
-                    onChange={handleChange}
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Phone Number *</label>
+                <input
+                  type="text"
+                  required
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="0300-1234567"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Phone Number *</label>
-                  <input
-                    type="text"
-                    required
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    placeholder="0300-1234567"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">WhatsApp Number</label>
+                <input
+                  type="text"
+                  name="whatsapp"
+                  value={formData.whatsapp}
+                  onChange={handleChange}
+                  placeholder="0300-1234567"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">WhatsApp Number</label>
-                  <input
-                    type="text"
-                    name="whatsapp"
-                    value={formData.whatsapp}
-                    onChange={handleChange}
-                    placeholder="0300-1234567"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Karwan / Agency Name *</label>
+                <input
+                  type="text"
+                  required
+                  name="carwanName"
+                  value={formData.carwanName}
+                  onChange={handleChange}
+                  placeholder="Agency name"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Residential Address</label>
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    placeholder="Full home address"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Office Location</label>
+                <input
+                  type="text"
+                  name="officeAddress"
+                  value={formData.officeAddress}
+                  onChange={handleChange}
+                  placeholder="City / Area"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
 
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Username (For Login) *</label>
+                <input
+                  type="text"
+                  required
+                  name="username"
+                  value={formData.username}
+                  onChange={handleChange}
+                  placeholder="Login username"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Password *</label>
+                <input
+                  type="password"
+                  required
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Login password"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
               </div>
             </div>
 
-            {/* Section 2: Business & Karwan Particulars */}
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Briefcase className="w-4 h-4 text-[#0f2d59]" />
-                <span>Karwan & Agency Details</span>
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Karwan / Agency Name *</label>
-                  <input
-                    type="text"
-                    required
-                    name="carwanName"
-                    value={formData.carwanName}
-                    onChange={handleChange}
-                    placeholder="e.g. Al-Hadi Travel"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Office Location / Address</label>
-                  <input
-                    type="text"
-                    name="officeAddress"
-                    value={formData.officeAddress}
-                    onChange={handleChange}
-                    placeholder="e.g. Karor Lal Esan, Main Bazar"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
-
-              </div>
-            </div>
-
-            {/* Section 3: Portal Login Credentials */}
-            <div>
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-[#0f2d59]" />
-                <span>Portal Login Credentials</span>
-              </h3>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    name="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="agent@domain.com"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Username (For Login) *</label>
-                  <input
-                    type="text"
-                    required
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    placeholder="e.g. agent_karor"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Password *</label>
-                  <input
-                    type="password"
-                    required
-                    name="password"
-                    value={formData.password}
-                    onChange={handleChange}
-                    placeholder="Enter login password"
-                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:ring-2 focus:ring-[#0f2d59] outline-none"
-                  />
-                </div>
-
-              </div>
-            </div>
-
-            {/* Submit Actions */}
-            <div className="pt-4 border-t border-slate-200 flex justify-end gap-3">
+            {/* Submit Action */}
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
               <button
                 type="button"
                 onClick={() => router.back()}
-                className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-xs rounded-xl transition"
               >
                 Cancel
               </button>
-
               <button
                 type="submit"
                 disabled={loading}
-                className="px-8 py-3 bg-[#0f2d59] hover:bg-[#1b437e] text-amber-400 font-bold text-xs tracking-wider uppercase rounded-xl shadow-md transition disabled:opacity-50"
+                className="px-5 py-2 bg-[#0b2447] hover:bg-[#163a6f] text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow transition disabled:opacity-50"
               >
-                {loading ? 'Saving Registration...' : 'Register Agent Now'}
+                {loading ? 'Saving...' : 'Register Agent'}
               </button>
             </div>
 
