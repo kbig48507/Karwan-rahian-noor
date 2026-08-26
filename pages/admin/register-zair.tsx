@@ -8,13 +8,18 @@ import {
   Camera, 
   CheckCircle2, 
   AlertCircle,
-  ArrowLeft
+  ArrowLeft,
+  ScanLine,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { createWorker } from 'tesseract.js';
 
 export default function RegisterZair() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanStatus, setScanStatus] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -59,6 +64,59 @@ export default function RegisterZair() {
       setFormData((prev) => ({ ...prev, regNumber: 'Z0001' }));
     } catch {
       setFormData((prev) => ({ ...prev, regNumber: 'Z0001' }));
+    }
+  };
+
+  // Passport OCR Scanner using Tesseract.js
+  const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScanning(true);
+    setScanStatus('Initializing Passport Scanner...');
+
+    try {
+      const worker = await createWorker('eng');
+      setScanStatus('Reading Passport Text...');
+      
+      const ret = await worker.recognize(file);
+      const text = ret.data.text;
+      await worker.terminate();
+
+      setScanStatus('Extracting details...');
+
+      // Basic regex or text extraction logic for Passport
+      // Passports usually contain MRZ or uppercase name fields
+      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      
+      let extractedPassport = '';
+      let extractedName = '';
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        // Look for typical passport number pattern (e.g., 2 letters followed by numbers, or 9 chars)
+        if (!extractedPassport && /^[A-Z0-9]{7,9}$/.test(line.replace(/\s/g, ''))) {
+          extractedPassport = line.replace(/\s/g, '');
+        }
+        // Look for Name indicator or uppercase full name lines
+        if (line.includes('SURNAME') || line.includes('GIVEN NAMES')) {
+          if (lines[i + 1]) extractedName += lines[i + 1] + ' ';
+        }
+      }
+
+      // Fallback: If specific MRZ or lines found
+      setFormData(prev => ({
+        ...prev,
+        passportNumber: extractedPassport || prev.passportNumber,
+        fullName: extractedName.trim() || prev.fullName
+      }));
+
+      setSuccessMsg('Passport scanned successfully! Data populated.');
+    } catch (err: any) {
+      setErrorMsg('Failed to scan passport. Please fill manually.');
+    } finally {
+      setScanning(false);
+      setScanStatus('');
     }
   };
 
@@ -155,7 +213,7 @@ export default function RegisterZair() {
         <title>Zair Registration - Karwan-e-Rahian-e-Noor</title>
       </Head>
 
-      <div className="w-full space-y-3">
+      <div className="w-full space-y-4">
         
         {/* Top Action Bar */}
         <div className="flex items-center justify-between">
@@ -172,17 +230,26 @@ export default function RegisterZair() {
           </span>
         </div>
 
-        {/* White Screen-Fit Container */}
-        <div className="bg-white rounded-3xl p-4 sm:p-6 shadow-sm border border-slate-200/80">
+        {/* Main Card */}
+        <div className="bg-white rounded-3xl p-5 shadow-sm border border-slate-200/80">
           
-          <div className="text-center pb-3 border-b border-slate-100 mb-4">
-            <h2 className="text-xs sm:text-base font-black text-slate-800 tracking-wider uppercase flex items-center justify-center gap-2">
-              <UserPlus className="w-4 h-4 text-emerald-600" />
-              <span>ZAIR / PILGRIM REGISTRATION</span>
-            </h2>
-            <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">
-              Register individual passenger credentials and passport info
-            </p>
+          <div className="text-center pb-3 border-b border-slate-100 mb-4 flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div>
+              <h2 className="text-xs sm:text-base font-black text-slate-800 tracking-wider uppercase flex items-center gap-2">
+                <UserPlus className="w-4 h-4 text-emerald-600" />
+                <span>ZAIR / PILGRIM REGISTRATION</span>
+              </h2>
+              <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                Scan passport for auto-fill or enter credentials manually
+              </p>
+            </div>
+
+            {/* Passport Scan Button */}
+            <label className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
+              {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <ScanLine className="w-4 h-4 text-amber-300" />}
+              <span>{scanning ? scanStatus : 'Scan Passport (Auto-Fill)'}</span>
+              <input type="file" accept="image/*" onChange={handlePassportScan} disabled={scanning} className="hidden" />
+            </label>
           </div>
 
           {errorMsg && (
@@ -201,7 +268,7 @@ export default function RegisterZair() {
 
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             
-            {/* Photo Upload Section */}
+            {/* Photo Upload */}
             <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
               <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0">
                 {photoBase64 ? (
@@ -213,7 +280,7 @@ export default function RegisterZair() {
               <div className="flex-1">
                 <label className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#0b2447] text-white rounded-lg text-xs font-semibold cursor-pointer hover:bg-[#163a6f] transition">
                   <Camera className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Upload Photo</span>
+                  <span>Upload Profile Photo</span>
                   <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
                 </label>
                 {imageSizeKb !== null && (
@@ -298,7 +365,7 @@ export default function RegisterZair() {
                   value={formData.passportNumber}
                   onChange={handleChange}
                   placeholder="e.g. AB1234567"
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-purple-700 focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
 
@@ -352,7 +419,7 @@ export default function RegisterZair() {
               </div>
             </div>
 
-            {/* Form Actions */}
+            {/* Actions */}
             <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -363,7 +430,7 @@ export default function RegisterZair() {
               </button>
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || scanning}
                 className="px-5 py-2 bg-emerald-700 hover:bg-emerald-800 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow transition disabled:opacity-50"
               >
                 {loading ? 'Registering...' : 'Register Zair'}
