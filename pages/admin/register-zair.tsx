@@ -23,7 +23,6 @@ export default function RegisterZair() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Form State including DOB, Address, Passport Issue & Expiry
   const [formData, setFormData] = useState({
     regNumber: 'Z0001',
     fullName: '',
@@ -71,7 +70,7 @@ export default function RegisterZair() {
     }
   };
 
-  // Precise Passport Parser, DOB Extractor & Face Cropper
+  // Advanced MRZ & Passport Parser + Face Cropper
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -102,20 +101,19 @@ export default function RegisterZair() {
           setPhotoBase64(croppedFaceBase64);
           setImageSizeKb(Math.round((croppedFaceBase64.length * 0.75) / 1024));
 
-          // 2. OCR Text Recognition
+          // 2. OCR Text Recognition via Tesseract
           const worker = await createWorker('eng');
-          setScanStatus('Reading Details...');
+          setScanStatus('Reading MRZ & Text...');
           
           const ret = await worker.recognize(file);
           const text = ret.data.text;
           await worker.terminate();
 
           const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          let rawFullText = lines.join(' ');
+          const rawFullText = lines.join(' ');
 
           let passportNo = '';
-          let surname = '';
-          let givenName = '';
+          let fullName = '';
           let fatherName = '';
           let cnic = '';
           let address = '';
@@ -123,53 +121,68 @@ export default function RegisterZair() {
           let issueDate = '';
           let expiryDate = '';
 
-          // Passport Number
+          // Find MRZ Lines (containing '<<')
+          const mrzLines = lines.filter(l => l.includes('<<') || l.length > 20 && /^[A-Z0-9<]+$/.test(l.replace(/\s/g, '')));
+          
+          if (mrzLines.length > 0) {
+            for (const mrz of mrzLines) {
+              // Extract Name from MRZ Line 1 (e.g. P<PAKABBAS<<MUREED<<<<<<<<<<<<)
+              if (mrz.startsWith('P<') || mrz.includes('<<')) {
+                const parts = mrz.split('<<');
+                if (parts.length > 1) {
+                  let surname = parts[0].replace(/P[A-Z]*</g, '').replace(/</g, ' ').trim();
+                  let givenNames = parts[1].replace(/</g, ' ').trim();
+                  if (givenNames || surname) {
+                    fullName = `${givenNames} ${surname}`.trim();
+                  }
+                }
+              }
+              // Extract Passport No & DOB from MRZ Line 2
+              const cleanMrz = mrz.replace(/\s/g, '');
+              if (cleanMrz.length >= 30 && /^[A-Z0-9<]+$/.test(cleanMrz)) {
+                // First 9 chars often contain passport number
+                const possiblePass = cleanMrz.substring(0, 9).replace(/</g, '');
+                if (possiblePass.length >= 7) passportNo = possiblePass;
+
+                // Extract YYMMDD for DOB (Index 13 to 19 in standard MRZ line 2)
+                const dobMatch = cleanMrz.match(/([0-9]{2})(0[1-9]|1[0-2])([0-2][0-9]|3[01])([0-9])/);
+                if (dobMatch) {
+                  const yy = parseInt(dobMatch[1]);
+                  const year = yy > 50 ? `19${dobMatch[1]}` : `20${dobMatch[1]}`;
+                  dobStr = `${year}-${dobMatch[2]}-${dobMatch[3]}`;
+                }
+              }
+            }
+          }
+
+          // Fallback text parsing if MRZ missed anything
           const passMatch = rawFullText.match(/(?:Passport Number|Number|LS)[^\s]*\s*([A-Z]{2}[0-9]{7})/i) || rawFullText.match(/\b([A-Z]{2}[0-9]{7})\b/);
-          if (passMatch) passportNo = passMatch[1] || passMatch[0];
+          if (!passportNo && passMatch) passportNo = passMatch[1] || passMatch[0];
 
-          // Names
-          const surnameMatch = rawFullText.match(/Surname\s*([A-Z\s]+?)(?=(Given Names|Nationality|Citizenship))/i);
-          if (surnameMatch) surname = surnameMatch[1].trim();
-
-          const givenMatch = rawFullText.match(/Given Names\s*([A-Z\s]+?)(?=(Nationality|Citizenship|Date of Birth))/i);
-          if (givenMatch) givenName = givenMatch[1].trim();
-
-          const fullNameRes = givenName && surname ? `${givenName} ${surname}` : (givenName || surname || '');
-
-          // Father Name
           const fatherMatch = rawFullText.match(/Father Name\s*([A-Z\s]+?)(?=(Date of Issue|Date of Expiry|Issuing))/i);
           if (fatherMatch) fatherName = fatherMatch[1].trim();
 
-          // CNIC Number
           const cnicMatch = rawFullText.match(/([0-9]{5}-[0-9]{7}-[0-9])/);
           if (cnicMatch) cnic = cnicMatch[1];
 
-          // Place of Birth / Address
           const pobMatch = rawFullText.match(/Place of Birth\s*([A-Z,\s]+?)(?=(Father Name|Sex|Date))/i);
           if (pobMatch) address = pobMatch[1].trim();
 
-          // Helper to convert DD MMM YYYY to YYYY-MM-DD format
           const parseDateStr = (dStr: string) => {
             const d = new Date(dStr);
             return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
           };
 
-          // Dates Extraction
           const dates = rawFullText.match(/([0-9]{2}\s+[A-Z]{3}\s+[0-9]{4})/g);
-          if (dates && dates.length >= 3) {
-            // Usually 1st date is DOB, last 2 are Issue & Expiry
-            dobStr = parseDateStr(dates[0]);
+          if (dates && dates.length >= 2) {
             issueDate = parseDateStr(dates[dates.length - 2]);
             expiryDate = parseDateStr(dates[dates.length - 1]);
-          } else if (dates && dates.length === 2) {
-            issueDate = parseDateStr(dates[0]);
-            expiryDate = parseDateStr(dates[1]);
           }
 
           setFormData(prev => ({
             ...prev,
             passportNumber: passportNo || prev.passportNumber,
-            fullName: fullNameRes ? fullNameRes.charAt(0).toUpperCase() + fullNameRes.slice(1).toLowerCase() : prev.fullName,
+            fullName: fullName ? fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase() : prev.fullName,
             fatherName: fatherName ? fatherName.charAt(0).toUpperCase() + fatherName.slice(1).toLowerCase() : prev.fatherName,
             cnic: cnic || prev.cnic,
             address: address ? address.charAt(0).toUpperCase() + address.slice(1).toLowerCase() : prev.address,
@@ -178,7 +191,7 @@ export default function RegisterZair() {
             passportExpiryDate: expiryDate || prev.passportExpiryDate,
           }));
 
-          setSuccessMsg('Passport scanned successfully! Face cropped & all fields auto-filled.');
+          setSuccessMsg('Passport scanned successfully! All MRZ & text fields populated.');
           setScanning(false);
           setScanStatus('');
         };
@@ -315,7 +328,7 @@ export default function RegisterZair() {
                 <span>ZAIR / PILGRIM REGISTRATION</span>
               </h2>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Scan passport for auto-fill of DOB, Names, CNIC, Address & Dates
+                Scan passport for MRZ auto-fill of names, passport number & DOB
               </p>
             </div>
 
