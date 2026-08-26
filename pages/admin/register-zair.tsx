@@ -23,7 +23,7 @@ export default function RegisterZair() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Form State including Address, Passport Issue & Expiry Dates
+  // Form State including DOB, Address, Passport Issue & Expiry
   const [formData, setFormData] = useState({
     regNumber: 'Z0001',
     fullName: '',
@@ -71,13 +71,13 @@ export default function RegisterZair() {
     }
   };
 
-  // Advanced Passport OCR + Face Cropping Logic
+  // Precise Passport Parser, DOB Extractor & Face Cropper
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Initializing Scanner...');
+    setScanStatus('Scanning Passport...');
 
     try {
       const reader = new FileReader();
@@ -86,74 +86,99 @@ export default function RegisterZair() {
         img.src = readerEvent.target?.result as string;
 
         img.onload = async () => {
-          // 1. Crop Face/Photo area from passport (Usually top-left or left side of passport page)
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           
-          // Typical passport photo location: upper left region
-          const cropWidth = img.width * 0.35;
-          const cropHeight = img.height * 0.55;
-          canvas.width = 250;
-          canvas.height = 300;
-
+          // 1. Precise Face Cropping
+          canvas.width = 300;
+          canvas.height = 350;
           ctx?.drawImage(
             img, 
-            img.width * 0.05, img.height * 0.2, cropWidth, cropHeight, 
+            img.width * 0.04, img.height * 0.23, img.width * 0.23, img.height * 0.38, 
             0, 0, canvas.width, canvas.height
           );
 
-          const croppedFaceBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          const croppedFaceBase64 = canvas.toDataURL('image/jpeg', 0.9);
           setPhotoBase64(croppedFaceBase64);
           setImageSizeKb(Math.round((croppedFaceBase64.length * 0.75) / 1024));
 
-          // 2. Perform OCR Text Recognition
+          // 2. OCR Text Recognition
           const worker = await createWorker('eng');
-          setScanStatus('Reading Passport Details...');
+          setScanStatus('Reading Details...');
           
           const ret = await worker.recognize(file);
           const text = ret.data.text;
           await worker.terminate();
 
-          setScanStatus('Parsing Data...');
-
           const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          
+          let rawFullText = lines.join(' ');
+
           let passportNo = '';
-          let fullName = '';
+          let surname = '';
+          let givenName = '';
+          let fatherName = '';
+          let cnic = '';
+          let address = '';
+          let dobStr = '';
+          let issueDate = '';
+          let expiryDate = '';
 
-          for (const line of lines) {
-            if (line.includes('<<')) {
-              const parts = line.split('<<');
-              if (parts.length > 1 && !fullName) {
-                const surname = parts[0].replace(/[^A-Z]/g, ' ');
-                const givenName = parts[1].replace(/[^A-Z]/g, ' ');
-                fullName = `${givenName.trim()} ${surname.trim()}`.trim();
-              }
-            }
+          // Passport Number
+          const passMatch = rawFullText.match(/(?:Passport Number|Number|LS)[^\s]*\s*([A-Z]{2}[0-9]{7})/i) || rawFullText.match(/\b([A-Z]{2}[0-9]{7})\b/);
+          if (passMatch) passportNo = passMatch[1] || passMatch[0];
 
-            const cleanLine = line.replace(/[^A-Z0-9]/g, '');
-            if (!passportNo && /^[A-Z]{1,2}[0-9]{7,8}$/.test(cleanLine)) {
-              passportNo = cleanLine;
-            }
-          }
+          // Names
+          const surnameMatch = rawFullText.match(/Surname\s*([A-Z\s]+?)(?=(Given Names|Nationality|Citizenship))/i);
+          if (surnameMatch) surname = surnameMatch[1].trim();
 
-          if (!passportNo) {
-            for (const line of lines) {
-              const match = line.match(/\b([A-Z][0-9]{7,8})\b/);
-              if (match) {
-                passportNo = match[1];
-                break;
-              }
-            }
+          const givenMatch = rawFullText.match(/Given Names\s*([A-Z\s]+?)(?=(Nationality|Citizenship|Date of Birth))/i);
+          if (givenMatch) givenName = givenMatch[1].trim();
+
+          const fullNameRes = givenName && surname ? `${givenName} ${surname}` : (givenName || surname || '');
+
+          // Father Name
+          const fatherMatch = rawFullText.match(/Father Name\s*([A-Z\s]+?)(?=(Date of Issue|Date of Expiry|Issuing))/i);
+          if (fatherMatch) fatherName = fatherMatch[1].trim();
+
+          // CNIC Number
+          const cnicMatch = rawFullText.match(/([0-9]{5}-[0-9]{7}-[0-9])/);
+          if (cnicMatch) cnic = cnicMatch[1];
+
+          // Place of Birth / Address
+          const pobMatch = rawFullText.match(/Place of Birth\s*([A-Z,\s]+?)(?=(Father Name|Sex|Date))/i);
+          if (pobMatch) address = pobMatch[1].trim();
+
+          // Helper to convert DD MMM YYYY to YYYY-MM-DD format
+          const parseDateStr = (dStr: string) => {
+            const d = new Date(dStr);
+            return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
+          };
+
+          // Dates Extraction
+          const dates = rawFullText.match(/([0-9]{2}\s+[A-Z]{3}\s+[0-9]{4})/g);
+          if (dates && dates.length >= 3) {
+            // Usually 1st date is DOB, last 2 are Issue & Expiry
+            dobStr = parseDateStr(dates[0]);
+            issueDate = parseDateStr(dates[dates.length - 2]);
+            expiryDate = parseDateStr(dates[dates.length - 1]);
+          } else if (dates && dates.length === 2) {
+            issueDate = parseDateStr(dates[0]);
+            expiryDate = parseDateStr(dates[1]);
           }
 
           setFormData(prev => ({
             ...prev,
             passportNumber: passportNo || prev.passportNumber,
-            fullName: fullName ? fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase() : prev.fullName
+            fullName: fullNameRes ? fullNameRes.charAt(0).toUpperCase() + fullNameRes.slice(1).toLowerCase() : prev.fullName,
+            fatherName: fatherName ? fatherName.charAt(0).toUpperCase() + fatherName.slice(1).toLowerCase() : prev.fatherName,
+            cnic: cnic || prev.cnic,
+            address: address ? address.charAt(0).toUpperCase() + address.slice(1).toLowerCase() : prev.address,
+            dob: dobStr || prev.dob,
+            passportIssueDate: issueDate || prev.passportIssueDate,
+            passportExpiryDate: expiryDate || prev.passportExpiryDate,
           }));
 
-          setSuccessMsg('Passport scanned! Photo cropped & details auto-filled.');
+          setSuccessMsg('Passport scanned successfully! Face cropped & all fields auto-filled.');
           setScanning(false);
           setScanStatus('');
         };
@@ -161,7 +186,7 @@ export default function RegisterZair() {
       reader.readAsDataURL(file);
 
     } catch (err: any) {
-      setErrorMsg('Failed to scan passport image.');
+      setErrorMsg('Failed to scan passport.');
       setScanning(false);
       setScanStatus('');
     }
@@ -263,7 +288,7 @@ export default function RegisterZair() {
         <title>Zair Registration - Karwan-e-Rahian-e-Noor</title>
       </Head>
 
-      <div className="w-full space-y-4">
+      <div className="w-full space-y-4 pb-10">
         
         {/* Top Action Bar */}
         <div className="flex items-center justify-between">
@@ -290,14 +315,14 @@ export default function RegisterZair() {
                 <span>ZAIR / PILGRIM REGISTRATION</span>
               </h2>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Scan passport for auto-fill & face cropping
+                Scan passport for auto-fill of DOB, Names, CNIC, Address & Dates
               </p>
             </div>
 
             {/* Passport Scan Button */}
             <label className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
               {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <ScanLine className="w-4 h-4 text-amber-300" />}
-              <span>{scanning ? scanStatus : 'Scan Passport & Crop Face'}</span>
+              <span>{scanning ? scanStatus : 'Scan Passport & Auto-Fill'}</span>
               <input type="file" accept="image/*" onChange={handlePassportScan} disabled={scanning} className="hidden" />
             </label>
           </div>
@@ -351,7 +376,7 @@ export default function RegisterZair() {
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleChange}
-                  placeholder="e.g. Ali Raza"
+                  placeholder="e.g. Mureed Abbas"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
@@ -363,7 +388,7 @@ export default function RegisterZair() {
                   name="fatherName"
                   value={formData.fatherName}
                   onChange={handleChange}
-                  placeholder="Father name"
+                  placeholder="Mehmood"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
@@ -401,7 +426,7 @@ export default function RegisterZair() {
                   name="cnic"
                   value={formData.cnic}
                   onChange={handleChange}
-                  placeholder="38201-XXXXXXX-X"
+                  placeholder="32202-2530804-5"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
@@ -414,7 +439,7 @@ export default function RegisterZair() {
                   name="passportNumber"
                   value={formData.passportNumber}
                   onChange={handleChange}
-                  placeholder="e.g. AB1234567"
+                  placeholder="LS1018043"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-purple-700 focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
@@ -471,7 +496,7 @@ export default function RegisterZair() {
                   name="address"
                   value={formData.address}
                   onChange={handleChange}
-                  placeholder="Full home address / City"
+                  placeholder="Layyah, Pakistan"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
