@@ -1,0 +1,69 @@
+import type { NextApiRequest, NextApiResponse } from 'next';
+import { GoogleGenAI } from '@google/genai';
+
+const ai = new GoogleGenAI({
+  apiKey: process.env.NEXT_PUBLIC_GEMINI_API_KEY || '',
+});
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '10mb',
+    },
+  },
+};
+
+export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  const { imageBase64 } = req.body;
+
+  if (!imageBase64) {
+    return res.status(400).json({ error: 'No image provided' });
+  }
+
+  try {
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: [
+        {
+          role: 'user',
+          parts: [
+            {
+              inlineData: {
+                mimeType: 'image/jpeg',
+                data: base64Data,
+              },
+            },
+            {
+              text: `Extract the details from this Pakistani passport image. Return ONLY a valid JSON object without markdown fences or backticks:
+              {
+                "fullName": "Given Name and Surname combined",
+                "fatherName": "Father Name",
+                "cnic": "Citizenship/CNIC number with dashes if present",
+                "passportNumber": "Passport Number (usually starts with 2 letters like LS followed by 7 digits)",
+                "dob": "YYYY-MM-DD",
+                "passportIssueDate": "YYYY-MM-DD",
+                "passportExpiryDate": "YYYY-MM-DD",
+                "address": "Place of birth or city/country"
+              }`
+            }
+          ]
+        }
+      ]
+    });
+
+    const rawText = response.text || '{}';
+    const cleanJsonText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+    const parsedData = JSON.parse(cleanJsonText);
+
+    return res.status(200).json(parsedData);
+  } catch (err: any) {
+    console.error('AI Error:', err);
+    return res.status(500).json({ error: err.message || 'Failed to parse passport with AI' });
+  }
+}

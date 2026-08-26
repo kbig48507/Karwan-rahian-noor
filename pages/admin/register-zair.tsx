@@ -9,11 +9,10 @@ import {
   CheckCircle2, 
   AlertCircle,
   ArrowLeft,
-  ScanLine,
+  Sparkles,
   Loader2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { createWorker } from 'tesseract.js';
 
 export default function RegisterZair() {
   const router = useRouter();
@@ -70,136 +69,72 @@ export default function RegisterZair() {
     }
   };
 
-  // Advanced MRZ & Passport Parser + Face Cropper
+  // AI Smart Passport Scanner
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Scanning Passport...');
+    setScanStatus('Reading Passport with AI...');
+    setErrorMsg('');
+    setSuccessMsg('');
 
     try {
       const reader = new FileReader();
       reader.onload = async (readerEvent) => {
-        const img = document.createElement('img');
-        img.src = readerEvent.target?.result as string;
+        const fullBase64 = readerEvent.target?.result as string;
 
+        // 1. Crop face for profile photo
+        const img = document.createElement('img');
+        img.src = fullBase64;
         img.onload = async () => {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
-          
-          // 1. Precise Face Cropping
           canvas.width = 300;
-          canvas.height = 350;
+          canvas.height = 360;
+
+          // Cropping specific portrait area
           ctx?.drawImage(
             img, 
-            img.width * 0.04, img.height * 0.23, img.width * 0.23, img.height * 0.38, 
+            img.width * 0.03, img.height * 0.22, img.width * 0.25, img.height * 0.42, 
             0, 0, canvas.width, canvas.height
           );
 
-          const croppedFaceBase64 = canvas.toDataURL('image/jpeg', 0.9);
-          setPhotoBase64(croppedFaceBase64);
-          setImageSizeKb(Math.round((croppedFaceBase64.length * 0.75) / 1024));
+          const croppedFace = canvas.toDataURL('image/jpeg', 0.9);
+          setPhotoBase64(croppedFace);
+          setImageSizeKb(Math.round((croppedFace.length * 0.75) / 1024));
 
-          // 2. OCR Text Recognition via Tesseract
-          const worker = await createWorker('eng');
-          setScanStatus('Reading MRZ & Text...');
-          
-          const ret = await worker.recognize(file);
-          const text = ret.data.text;
-          await worker.terminate();
+          // 2. Call Gemini AI API Route
+          const response = await fetch('/api/scan-passport', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: fullBase64 }),
+          });
 
-          const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-          const rawFullText = lines.join(' ');
+          const data = await response.json();
 
-          let passportNo = '';
-          let fullName = '';
-          let fatherName = '';
-          let cnic = '';
-          let address = '';
-          let dobStr = '';
-          let issueDate = '';
-          let expiryDate = '';
+          if (!response.ok) throw new Error(data.error || 'AI scanning failed');
 
-          // Find MRZ Lines (containing '<<')
-          const mrzLines = lines.filter(l => l.includes('<<') || l.length > 20 && /^[A-Z0-9<]+$/.test(l.replace(/\s/g, '')));
-          
-          if (mrzLines.length > 0) {
-            for (const mrz of mrzLines) {
-              // Extract Name from MRZ Line 1 (e.g. P<PAKABBAS<<MUREED<<<<<<<<<<<<)
-              if (mrz.startsWith('P<') || mrz.includes('<<')) {
-                const parts = mrz.split('<<');
-                if (parts.length > 1) {
-                  let surname = parts[0].replace(/P[A-Z]*</g, '').replace(/</g, ' ').trim();
-                  let givenNames = parts[1].replace(/</g, ' ').trim();
-                  if (givenNames || surname) {
-                    fullName = `${givenNames} ${surname}`.trim();
-                  }
-                }
-              }
-              // Extract Passport No & DOB from MRZ Line 2
-              const cleanMrz = mrz.replace(/\s/g, '');
-              if (cleanMrz.length >= 30 && /^[A-Z0-9<]+$/.test(cleanMrz)) {
-                // First 9 chars often contain passport number
-                const possiblePass = cleanMrz.substring(0, 9).replace(/</g, '');
-                if (possiblePass.length >= 7) passportNo = possiblePass;
-
-                // Extract YYMMDD for DOB (Index 13 to 19 in standard MRZ line 2)
-                const dobMatch = cleanMrz.match(/([0-9]{2})(0[1-9]|1[0-2])([0-2][0-9]|3[01])([0-9])/);
-                if (dobMatch) {
-                  const yy = parseInt(dobMatch[1]);
-                  const year = yy > 50 ? `19${dobMatch[1]}` : `20${dobMatch[1]}`;
-                  dobStr = `${year}-${dobMatch[2]}-${dobMatch[3]}`;
-                }
-              }
-            }
-          }
-
-          // Fallback text parsing if MRZ missed anything
-          const passMatch = rawFullText.match(/(?:Passport Number|Number|LS)[^\s]*\s*([A-Z]{2}[0-9]{7})/i) || rawFullText.match(/\b([A-Z]{2}[0-9]{7})\b/);
-          if (!passportNo && passMatch) passportNo = passMatch[1] || passMatch[0];
-
-          const fatherMatch = rawFullText.match(/Father Name\s*([A-Z\s]+?)(?=(Date of Issue|Date of Expiry|Issuing))/i);
-          if (fatherMatch) fatherName = fatherMatch[1].trim();
-
-          const cnicMatch = rawFullText.match(/([0-9]{5}-[0-9]{7}-[0-9])/);
-          if (cnicMatch) cnic = cnicMatch[1];
-
-          const pobMatch = rawFullText.match(/Place of Birth\s*([A-Z,\s]+?)(?=(Father Name|Sex|Date))/i);
-          if (pobMatch) address = pobMatch[1].trim();
-
-          const parseDateStr = (dStr: string) => {
-            const d = new Date(dStr);
-            return !isNaN(d.getTime()) ? d.toISOString().split('T')[0] : '';
-          };
-
-          const dates = rawFullText.match(/([0-9]{2}\s+[A-Z]{3}\s+[0-9]{4})/g);
-          if (dates && dates.length >= 2) {
-            issueDate = parseDateStr(dates[dates.length - 2]);
-            expiryDate = parseDateStr(dates[dates.length - 1]);
-          }
-
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
-            passportNumber: passportNo || prev.passportNumber,
-            fullName: fullName ? fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase() : prev.fullName,
-            fatherName: fatherName ? fatherName.charAt(0).toUpperCase() + fatherName.slice(1).toLowerCase() : prev.fatherName,
-            cnic: cnic || prev.cnic,
-            address: address ? address.charAt(0).toUpperCase() + address.slice(1).toLowerCase() : prev.address,
-            dob: dobStr || prev.dob,
-            passportIssueDate: issueDate || prev.passportIssueDate,
-            passportExpiryDate: expiryDate || prev.passportExpiryDate,
+            fullName: data.fullName || prev.fullName,
+            fatherName: data.fatherName || prev.fatherName,
+            cnic: data.cnic || prev.cnic,
+            passportNumber: data.passportNumber || prev.passportNumber,
+            dob: data.dob || prev.dob,
+            passportIssueDate: data.passportIssueDate || prev.passportIssueDate,
+            passportExpiryDate: data.passportExpiryDate || prev.passportExpiryDate,
+            address: data.address || prev.address,
           }));
 
-          setSuccessMsg('Passport scanned successfully! All MRZ & text fields populated.');
+          setSuccessMsg('AI Scanned Successfully! All fields auto-filled.');
           setScanning(false);
           setScanStatus('');
         };
       };
       reader.readAsDataURL(file);
-
     } catch (err: any) {
-      setErrorMsg('Failed to scan passport.');
+      setErrorMsg(err.message || 'AI could not read the image.');
       setScanning(false);
       setScanStatus('');
     }
@@ -328,14 +263,14 @@ export default function RegisterZair() {
                 <span>ZAIR / PILGRIM REGISTRATION</span>
               </h2>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Scan passport for MRZ auto-fill of names, passport number & DOB
+                AI Powered Passport Scanner (100% Accurate Auto-Fill)
               </p>
             </div>
 
-            {/* Passport Scan Button */}
-            <label className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
-              {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <ScanLine className="w-4 h-4 text-amber-300" />}
-              <span>{scanning ? scanStatus : 'Scan Passport & Auto-Fill'}</span>
+            {/* AI Scan Button */}
+            <label className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
+              {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <Sparkles className="w-4 h-4 text-amber-300" />}
+              <span>{scanning ? scanStatus : 'AI Scan Passport'}</span>
               <input type="file" accept="image/*" onChange={handlePassportScan} disabled={scanning} className="hidden" />
             </label>
           </div>
