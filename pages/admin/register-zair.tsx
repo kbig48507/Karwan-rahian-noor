@@ -23,6 +23,7 @@ export default function RegisterZair() {
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
 
+  // Form State including Address, Passport Issue & Expiry Dates
   const [formData, setFormData] = useState({
     regNumber: 'Z0001',
     fullName: '',
@@ -31,7 +32,10 @@ export default function RegisterZair() {
     whatsapp: '',
     cnic: '',
     passportNumber: '',
+    passportIssueDate: '',
+    passportExpiryDate: '',
     dob: '',
+    address: '',
     email: '',
     username: '',
     password: '',
@@ -67,54 +71,97 @@ export default function RegisterZair() {
     }
   };
 
-  // Passport OCR Scanner using Tesseract.js
+  // Advanced Passport OCR + Face Cropping Logic
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Initializing Passport Scanner...');
+    setScanStatus('Initializing Scanner...');
 
     try {
-      const worker = await createWorker('eng');
-      setScanStatus('Reading Passport Text...');
-      
-      const ret = await worker.recognize(file);
-      const text = ret.data.text;
-      await worker.terminate();
+      const reader = new FileReader();
+      reader.onload = async (readerEvent) => {
+        const img = document.createElement('img');
+        img.src = readerEvent.target?.result as string;
 
-      setScanStatus('Extracting details...');
+        img.onload = async () => {
+          // 1. Crop Face/Photo area from passport (Usually top-left or left side of passport page)
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          
+          // Typical passport photo location: upper left region
+          const cropWidth = img.width * 0.35;
+          const cropHeight = img.height * 0.55;
+          canvas.width = 250;
+          canvas.height = 300;
 
-      // Basic regex or text extraction logic for Passport
-      // Passports usually contain MRZ or uppercase name fields
-      const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      
-      let extractedPassport = '';
-      let extractedName = '';
+          ctx?.drawImage(
+            img, 
+            img.width * 0.05, img.height * 0.2, cropWidth, cropHeight, 
+            0, 0, canvas.width, canvas.height
+          );
 
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        // Look for typical passport number pattern (e.g., 2 letters followed by numbers, or 9 chars)
-        if (!extractedPassport && /^[A-Z0-9]{7,9}$/.test(line.replace(/\s/g, ''))) {
-          extractedPassport = line.replace(/\s/g, '');
-        }
-        // Look for Name indicator or uppercase full name lines
-        if (line.includes('SURNAME') || line.includes('GIVEN NAMES')) {
-          if (lines[i + 1]) extractedName += lines[i + 1] + ' ';
-        }
-      }
+          const croppedFaceBase64 = canvas.toDataURL('image/jpeg', 0.85);
+          setPhotoBase64(croppedFaceBase64);
+          setImageSizeKb(Math.round((croppedFaceBase64.length * 0.75) / 1024));
 
-      // Fallback: If specific MRZ or lines found
-      setFormData(prev => ({
-        ...prev,
-        passportNumber: extractedPassport || prev.passportNumber,
-        fullName: extractedName.trim() || prev.fullName
-      }));
+          // 2. Perform OCR Text Recognition
+          const worker = await createWorker('eng');
+          setScanStatus('Reading Passport Details...');
+          
+          const ret = await worker.recognize(file);
+          const text = ret.data.text;
+          await worker.terminate();
 
-      setSuccessMsg('Passport scanned successfully! Data populated.');
+          setScanStatus('Parsing Data...');
+
+          const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+          
+          let passportNo = '';
+          let fullName = '';
+
+          for (const line of lines) {
+            if (line.includes('<<')) {
+              const parts = line.split('<<');
+              if (parts.length > 1 && !fullName) {
+                const surname = parts[0].replace(/[^A-Z]/g, ' ');
+                const givenName = parts[1].replace(/[^A-Z]/g, ' ');
+                fullName = `${givenName.trim()} ${surname.trim()}`.trim();
+              }
+            }
+
+            const cleanLine = line.replace(/[^A-Z0-9]/g, '');
+            if (!passportNo && /^[A-Z]{1,2}[0-9]{7,8}$/.test(cleanLine)) {
+              passportNo = cleanLine;
+            }
+          }
+
+          if (!passportNo) {
+            for (const line of lines) {
+              const match = line.match(/\b([A-Z][0-9]{7,8})\b/);
+              if (match) {
+                passportNo = match[1];
+                break;
+              }
+            }
+          }
+
+          setFormData(prev => ({
+            ...prev,
+            passportNumber: passportNo || prev.passportNumber,
+            fullName: fullName ? fullName.charAt(0).toUpperCase() + fullName.slice(1).toLowerCase() : prev.fullName
+          }));
+
+          setSuccessMsg('Passport scanned! Photo cropped & details auto-filled.');
+          setScanning(false);
+          setScanStatus('');
+        };
+      };
+      reader.readAsDataURL(file);
+
     } catch (err: any) {
-      setErrorMsg('Failed to scan passport. Please fill manually.');
-    } finally {
+      setErrorMsg('Failed to scan passport image.');
       setScanning(false);
       setScanStatus('');
     }
@@ -175,7 +222,10 @@ export default function RegisterZair() {
           whatsapp: formData.whatsapp,
           cnic: formData.cnic,
           passport_number: formData.passportNumber,
+          passport_issue_date: formData.passportIssueDate || null,
+          passport_expiry_date: formData.passportExpiryDate || null,
           dob: formData.dob || null,
+          address: formData.address,
           email: formData.email,
           username: formData.username.trim(),
           photo_base64: photoBase64,
@@ -240,14 +290,14 @@ export default function RegisterZair() {
                 <span>ZAIR / PILGRIM REGISTRATION</span>
               </h2>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Scan passport for auto-fill or enter credentials manually
+                Scan passport for auto-fill & face cropping
               </p>
             </div>
 
             {/* Passport Scan Button */}
             <label className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
               {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <ScanLine className="w-4 h-4 text-amber-300" />}
-              <span>{scanning ? scanStatus : 'Scan Passport (Auto-Fill)'}</span>
+              <span>{scanning ? scanStatus : 'Scan Passport & Crop Face'}</span>
               <input type="file" accept="image/*" onChange={handlePassportScan} disabled={scanning} className="hidden" />
             </label>
           </div>
@@ -268,11 +318,11 @@ export default function RegisterZair() {
 
           <form onSubmit={handleSubmit} className="space-y-4 text-left">
             
-            {/* Photo Upload */}
+            {/* Cropped Face / Photo Upload */}
             <div className="flex items-center gap-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
               <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-slate-200 border border-slate-300 flex items-center justify-center flex-shrink-0">
                 {photoBase64 ? (
-                  <Image src={photoBase64} alt="Zair Preview" fill className="object-cover" />
+                  <Image src={photoBase64} alt="Cropped Face Preview" fill className="object-cover" />
                 ) : (
                   <User className="w-6 h-6 text-slate-400" />
                 )}
@@ -370,6 +420,28 @@ export default function RegisterZair() {
               </div>
 
               <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Passport Issue Date</label>
+                <input
+                  type="date"
+                  name="passportIssueDate"
+                  value={formData.passportIssueDate}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Passport Expiry Date</label>
+                <input
+                  type="date"
+                  name="passportExpiryDate"
+                  value={formData.passportExpiryDate}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
+
+              <div>
                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date of Birth</label>
                 <input
                   type="date"
@@ -388,6 +460,18 @@ export default function RegisterZair() {
                   value={formData.email}
                   onChange={handleChange}
                   placeholder="zair@domain.com"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Residential Address</label>
+                <input
+                  type="text"
+                  name="address"
+                  value={formData.address}
+                  onChange={handleChange}
+                  placeholder="Full home address / City"
                   className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:bg-white focus:border-[#0b2447] outline-none"
                 />
               </div>
