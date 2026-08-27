@@ -42,18 +42,16 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
               },
             },
             {
-              text: `You are an automated OCR parser for Pakistani Passports. 
-Read the provided passport image and extract the following details. 
-Return ONLY a valid, raw JSON object without markdown formatting, code blocks or backticks:
+              text: `You are an expert passport OCR scanner. Read this Pakistani passport and extract the following fields accurately. Return ONLY a strict raw JSON object without markdown fences, backticks, or extra text:
 {
-  "fullName": "Given Name and Surname combined",
-  "fatherName": "Father Name",
-  "cnic": "CNIC/Citizenship number",
-  "passportNumber": "Passport Number (e.g. LS1018043)",
+  "fullName": "Full name combining given name and surname",
+  "fatherName": "Father name",
+  "cnic": "CNIC number with dashes if visible",
+  "passportNumber": "Passport Number",
   "dob": "YYYY-MM-DD",
   "passportIssueDate": "YYYY-MM-DD",
   "passportExpiryDate": "YYYY-MM-DD",
-  "address": "Place of birth or address"
+  "address": "City or place of birth/address"
 }`
             }
           ]
@@ -67,7 +65,7 @@ Return ONLY a valid, raw JSON object without markdown formatting, code blocks or
 
     return res.status(200).json(parsedData);
   } catch (err: any) {
-    console.error('Scan Error:', err);
-    return res.status(500).json({ error: err.message || 'Failed to scan passport via AI' });
+    console.error('Gemini OCR Error:', err);
+    return res.status(500).json({ error: err.message || 'AI scan failed' });
   }
 }

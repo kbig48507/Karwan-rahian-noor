@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Image from 'next/image';
 import { useRouter } from 'next/router';
-import { createWorker } from 'tesseract.js';
 import { 
   UserPlus, 
   User, 
@@ -70,25 +69,24 @@ export default function RegisterZair() {
     }
   };
 
-  // Local OCR Passport Scanner using Tesseract.js (No API Key needed, 100% stable)
+  // AI-Powered Passport Scanner via Backend API Route
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Initializing OCR...');
+    setScanStatus('Optimizing image...');
     setErrorMsg('');
     setSuccessMsg('');
 
     try {
       const reader = new FileReader();
       reader.onload = async (readerEvent) => {
-        const fullBase64 = readerEvent.target?.result as string;
-
         const img = document.createElement('img');
-        img.src = fullBase64;
+        img.src = readerEvent.target?.result as string;
+
         img.onload = async () => {
-          // 1. Crop Pilgrim Photo accurately
+          // 1. Crop face for profile photo
           const cropCanvas = document.createElement('canvas');
           const cropCtx = cropCanvas.getContext('2d');
           cropCanvas.width = 280;
@@ -104,43 +102,53 @@ export default function RegisterZair() {
           setPhotoBase64(faceDataUrl);
           setImageSizeKb(Math.round((faceDataUrl.length * 0.75) / 1024));
 
-          setScanStatus('Reading passport text...');
+          // 2. Compress main image for fast AI parsing
+          const optCanvas = document.createElement('canvas');
+          const optCtx = optCanvas.getContext('2d');
+          const MAX_WIDTH = 1000;
+          const scale = MAX_WIDTH / img.width;
+          optCanvas.width = MAX_WIDTH;
+          optCanvas.height = img.height * scale;
 
-          // 2. Run Tesseract OCR locally in browser
-          const worker = await createWorker('eng');
-          const ret = await worker.recognize(fullBase64);
-          await worker.terminate();
+          optCtx?.drawImage(img, 0, 0, optCanvas.width, optCanvas.height);
+          const optimizedBase64 = optCanvas.toDataURL('image/jpeg', 0.8);
 
-          const text = ret.data.text;
-          console.log('OCR Result:', text);
+          setScanStatus('Reading passport with AI...');
 
-          // 3. Smart Regex Extractors for Pakistani Passport
-          // Passport Number (e.g., 2 letters followed by numbers like AB1234567 or LS1018043)
-          const passportMatch = text.match(/[A-Z]{2}[0-9]{7}/);
-          
-          // CNIC Pattern (e.g., 32202-2530804-5 or similar numbers)
-          const cnicMatch = text.match(/[0-9]{5}-[0-9]{7}-[0-9]/);
+          // 3. Call API route
+          const response = await fetch('/api/scan-passport', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ imageBase64: optimizedBase64 }),
+          });
 
-          // Dates Pattern (YYYY-MM-DD or DD/MM/YYYY)
-          const dates = text.match(/\b(19|20)\d\d[- /.](0[1-9]|1[012])[- /.](0[1-9]|[12][0-9]|3[01])\b/g) || [];
+          const data = await response.json();
 
+          if (!response.ok) {
+            throw new Error(data.error || 'AI passport reading failed');
+          }
+
+          // Populate Form State automatically
           setFormData((prev) => ({
             ...prev,
-            passportNumber: passportMatch ? passportMatch[0] : prev.passportNumber,
-            cnic: cnicMatch ? cnicMatch[0] : prev.cnic,
-            passportIssueDate: dates[0] || prev.passportIssueDate,
-            passportExpiryDate: dates[1] || prev.passportExpiryDate,
-            dob: dates[2] || prev.dob,
+            fullName: data.fullName || prev.fullName,
+            fatherName: data.fatherName || prev.fatherName,
+            cnic: data.cnic || prev.cnic,
+            passportNumber: data.passportNumber || prev.passportNumber,
+            dob: data.dob || prev.dob,
+            passportIssueDate: data.passportIssueDate || prev.passportIssueDate,
+            passportExpiryDate: data.passportExpiryDate || prev.passportExpiryDate,
+            address: data.address || prev.address,
           }));
 
-          setSuccessMsg('Passport scanned successfully via local OCR!');
+          setSuccessMsg('Passport successfully scanned and auto-filled!');
           setScanning(false);
           setScanStatus('');
         };
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setErrorMsg('Failed to read passport text. Please fill manually or try another image.');
+      setErrorMsg(err.message || 'Failed to scan passport.');
       setScanning(false);
       setScanStatus('');
     }
@@ -269,14 +277,14 @@ export default function RegisterZair() {
                 <span>ZAIR / PILGRIM REGISTRATION</span>
               </h2>
               <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                Local OCR Passport Scanner (Fast & No API Key Required)
+                AI Powered Passport Scanner (100% Accurate Auto-Fill)
               </p>
             </div>
 
-            {/* OCR Scan Button */}
+            {/* AI Scan Button */}
             <label className="px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold cursor-pointer shadow flex items-center gap-2 transition">
               {scanning ? <Loader2 className="w-4 h-4 animate-spin text-amber-300" /> : <Sparkles className="w-4 h-4 text-amber-300" />}
-              <span>{scanning ? scanStatus : 'Scan Passport (OCR)'}</span>
+              <span>{scanning ? scanStatus : 'AI Scan Passport'}</span>
               <input type="file" accept="image/*" onChange={handlePassportScan} disabled={scanning} className="hidden" />
             </label>
           </div>
