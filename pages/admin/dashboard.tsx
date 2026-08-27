@@ -15,7 +15,8 @@ import {
   Building,
   CreditCard,
   Layers,
-  ArrowRight
+  ArrowRight,
+  Wallet
 } from 'lucide-react';
 
 export default function AdminDashboard() {
@@ -32,6 +33,7 @@ export default function AdminDashboard() {
   ];
 
   const accountModules = [
+    { title: 'Personal Ledger', desc: 'Payables & Receivables directory', href: '/admin/personal-ledger', icon: Wallet, bg: 'bg-indigo-50 text-indigo-600' },
     { title: 'General Ledger', desc: 'Company accounting & journal', href: '/admin/ledger', icon: BookOpen, bg: 'bg-blue-50 text-blue-600' },
     { title: 'Agent Accounts', desc: 'Agency statements & balances', href: '/admin/agent-accounts', icon: Building, bg: 'bg-emerald-50 text-emerald-600' },
     { title: 'Zair Accounts', desc: 'Individual pilgrim billing', href: '/admin/zair-accounts', icon: Users, bg: 'bg-amber-50 text-amber-600' },
@@ -93,7 +95,7 @@ export default function AdminDashboard() {
             </span>
           </div>
 
-          {/* Responsive Grid: 3 cols on mobile (app squares), 4 cols on PC (wide cards) */}
+          {/* Responsive Grid */}
           <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-5 pt-5 sm:pt-6">
             {currentModules.map((item, idx) => {
               const Icon = item.icon;
