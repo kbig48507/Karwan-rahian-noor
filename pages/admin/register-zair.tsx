@@ -69,7 +69,7 @@ export default function RegisterZair() {
     }
   };
 
-  // AI-Powered Passport Scanner via Backend API Route
+  // Secure Server-Side AI Passport Scanner
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -86,7 +86,7 @@ export default function RegisterZair() {
         img.src = readerEvent.target?.result as string;
 
         img.onload = async () => {
-          // 1. Crop face for profile photo
+          // 1. Crop face accurately for profile photo
           const cropCanvas = document.createElement('canvas');
           const cropCtx = cropCanvas.getContext('2d');
           cropCanvas.width = 280;
@@ -102,20 +102,20 @@ export default function RegisterZair() {
           setPhotoBase64(faceDataUrl);
           setImageSizeKb(Math.round((faceDataUrl.length * 0.75) / 1024));
 
-          // 2. Compress main image for fast AI parsing
+          // 2. Compress main image for server upload
           const optCanvas = document.createElement('canvas');
           const optCtx = optCanvas.getContext('2d');
-          const MAX_WIDTH = 1000;
+          const MAX_WIDTH = 900;
           const scale = MAX_WIDTH / img.width;
           optCanvas.width = MAX_WIDTH;
           optCanvas.height = img.height * scale;
 
           optCtx?.drawImage(img, 0, 0, optCanvas.width, optCanvas.height);
-          const optimizedBase64 = optCanvas.toDataURL('image/jpeg', 0.8);
+          const optimizedBase64 = optCanvas.toDataURL('image/jpeg', 0.75);
 
-          setScanStatus('Reading passport with AI...');
+          setScanStatus('Reading data with AI...');
 
-          // 3. Call API route
+          // 3. Call Server-Side API Route
           const response = await fetch('/api/scan-passport', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -125,7 +125,7 @@ export default function RegisterZair() {
           const data = await response.json();
 
           if (!response.ok) {
-            throw new Error(data.error || 'AI passport reading failed');
+            throw new Error(data.error || 'AI scanning request failed');
           }
 
           // Populate Form State automatically
@@ -141,7 +141,7 @@ export default function RegisterZair() {
             address: data.address || prev.address,
           }));
 
-          setSuccessMsg('Passport successfully scanned and auto-filled!');
+          setSuccessMsg('Passport scanned successfully! All details auto-filled.');
           setScanning(false);
           setScanStatus('');
         };
