@@ -69,46 +69,57 @@ export default function RegisterZair() {
     }
   };
 
-  // AI Smart Passport Scanner & Face Extraction
+  // Instant AI Scanner with Lightweight Image Pre-Compression
   const handlePassportScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setScanning(true);
-    setScanStatus('Reading Passport with AI...');
+    setScanStatus('Optimizing image...');
     setErrorMsg('');
     setSuccessMsg('');
 
     try {
       const reader = new FileReader();
       reader.onload = async (readerEvent) => {
-        const fullBase64 = readerEvent.target?.result as string;
-
-        // 1. Precise Face Cropping from Passport
         const img = document.createElement('img');
-        img.src = fullBase64;
-        img.onload = async () => {
-          const canvas = document.createElement('canvas');
-          const ctx = canvas.getContext('2d');
-          canvas.width = 300;
-          canvas.height = 360;
+        img.src = readerEvent.target?.result as string;
 
-          // Standard Pakistani passport face coordinates
-          ctx?.drawImage(
+        img.onload = async () => {
+          // 1. Crop Pilgrim Photo
+          const cropCanvas = document.createElement('canvas');
+          const cropCtx = cropCanvas.getContext('2d');
+          cropCanvas.width = 280;
+          cropCanvas.height = 340;
+
+          cropCtx?.drawImage(
             img, 
-            img.width * 0.05, img.height * 0.23, img.width * 0.24, img.height * 0.42, 
-            0, 0, canvas.width, canvas.height
+            img.width * 0.05, img.height * 0.23, img.width * 0.23, img.height * 0.40, 
+            0, 0, cropCanvas.width, cropCanvas.height
           );
 
-          const croppedFace = canvas.toDataURL('image/jpeg', 0.9);
-          setPhotoBase64(croppedFace);
-          setImageSizeKb(Math.round((croppedFace.length * 0.75) / 1024));
+          const faceDataUrl = cropCanvas.toDataURL('image/jpeg', 0.85);
+          setPhotoBase64(faceDataUrl);
+          setImageSizeKb(Math.round((faceDataUrl.length * 0.75) / 1024));
 
-          // 2. Call Backend AI Parser
+          // 2. Compress the main passport image down to ~300KB for fast AI parsing
+          const optCanvas = document.createElement('canvas');
+          const optCtx = optCanvas.getContext('2d');
+          const MAX_WIDTH = 1000;
+          const scale = MAX_WIDTH / img.width;
+          optCanvas.width = MAX_WIDTH;
+          optCanvas.height = img.height * scale;
+
+          optCtx?.drawImage(img, 0, 0, optCanvas.width, optCanvas.height);
+          const optimizedBase64 = optCanvas.toDataURL('image/jpeg', 0.8);
+
+          setScanStatus('Reading data with AI...');
+
+          // 3. Send to API Route
           const response = await fetch('/api/scan-passport', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ imageBase64: fullBase64 }),
+            body: JSON.stringify({ imageBase64: optimizedBase64 }),
           });
 
           const data = await response.json();
@@ -117,6 +128,7 @@ export default function RegisterZair() {
             throw new Error(data.error || 'AI scanning request failed');
           }
 
+          // Populate Form State
           setFormData((prev) => ({
             ...prev,
             fullName: data.fullName || prev.fullName,
@@ -129,14 +141,14 @@ export default function RegisterZair() {
             address: data.address || prev.address,
           }));
 
-          setSuccessMsg('Passport scanned successfully! All details auto-filled.');
+          setSuccessMsg('Passport scanned successfully! All fields auto-filled.');
           setScanning(false);
           setScanStatus('');
         };
       };
       reader.readAsDataURL(file);
     } catch (err: any) {
-      setErrorMsg(err.message || 'Could not scan passport. Please verify API key.');
+      setErrorMsg(err.message || 'AI scanning error. Please check your API key.');
       setScanning(false);
       setScanStatus('');
     }
