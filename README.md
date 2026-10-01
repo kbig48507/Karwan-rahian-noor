@@ -1,40 +1,59 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/pages/api-reference/create-next-app).
+# Karwan Rahiyaan Noor — local Next.js edition
 
-## Getting Started
+Requires Node.js 22.13 or newer. Open this folder in VS Code, then run:
 
-First, run the development server:
-
-```bash
+```powershell
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open http://localhost:3000. Copy `.env.example` to `.env.local`, enter the Supabase project URL and publishable/anon key, then restart `npm run dev`. Run the complete `supabase/schema.sql` in the Supabase SQL Editor; its `krn_` tables avoid collisions with old tables. Create an Auth user, then insert that user's UUID into `public.krn_staff_profiles` with role `admin`. Put the service role key in `.env.local` only for server-side portal invitation creation. Never add `NEXT_PUBLIC_` to it, commit it, or expose it to the browser.
 
-You can start editing the page by modifying `pages/index.tsx`. The page auto-updates as you edit the file.
+Passport MRZ scanning, linked selectors and the finance module are included. WhatsApp actions open a prefilled chat for a staff member to send from their own account; delivery is manual.
 
-[API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) can be accessed on [http://localhost:3000/api/hello](http://localhost:3000/api/hello). This endpoint can be edited in `pages/api/hello.ts`.
+## Finance module (version 0.3)
 
-The `pages/api` directory is mapped to `/api/*`. Files in this directory are treated as [API routes](https://nextjs.org/docs/pages/building-your-application/routing/api-routes) instead of React pages.
+1. In the same Supabase project, run `supabase/finance_v1.sql` in SQL Editor **after** `supabase/schema.sql`. It adds `krn_finance_entries` and policies; it never drops existing tables. The SQL can be rerun without duplicating the table.
+2. Restart `npm run dev` after replacing the updated project files. Sign in as a staff profile with `admin` or `finance` role. Other roles do not see finance data under its RLS policy.
+3. Add pilgrims and agents, and add each airline/company under **Suppliers**. Use `supplier_type` such as `airline`, `embassy`, or `company`.
+4. In **Ledger → Record transaction**, post a **Customer invoice** to a pilgrim or agent, or a **Supplier bill** to an airline/company. For incoming money choose **Cash receipt**, select the pilgrim/agent, amount and cash/bank. For outgoing money choose **Supplier payment**, select the supplier and amount. Link a receipt or payment to its bill when applicable; otherwise it remains unallocated and the party account balance still updates.
+5. **Cash & bank book** shows opening balance, inflows, outflows and closing balance for the chosen date range; **Party accounts** shows every party statement; **Bills & invoices** shows amount, allocated amount and due. Use the Print buttons for reports and numbered individual vouchers. An admin may post an **Opening balance** once the actual starting cash/bank amount has been checked.
+6. If you made a mistake, use **Reverse** with a reason, then post the corrected entry. An invoice/bill with allocated receipts/payments can be reversed only after reversing those allocations first. There are no edits or deletes of finance entries.
 
-This project uses [`next/font`](https://nextjs.org/docs/pages/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Accounting scope:** The finance module tracks cash/bank movements and party balances from posted invoices, bills, receipts, supplier payments and refunds. It is not a full general ledger: bank reconciliation, multiple currencies, tax, commission, journal adjustments and payroll are future phases. No opening balance is assumed. The old `krn_ledger_entries` table is left untouched and is not included in these finance reports; if you posted entries there previously, reconcile/migrate them before using the new reports for actual accounts. RLS and triggers should be tested against your real Supabase project before recording live payments.
 
-## Learn More
+## Booking workflow (version 0.4)
 
-To learn more about Next.js, take a look at the following resources:
+Run `supabase/booking_v1.sql` in the **same** Supabase project after `schema.sql`. It adds a booking reference sequence and a group capacity guard; it does not remove or rewrite existing bookings. The final SQL result should read `booking_ready`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn-pages-router) - an interactive Next.js tutorial.
+Create an agent (if needed), register a pilgrim and select that agent, create a package and a travel group with a capacity, then use **Bookings → New booking** to select the pilgrim, package and group. The package price fills the booking amount, which can be adjusted before saving. A reference such as `KN-YYYYMMDD-000001` is generated by the database. `enquiry` does not reserve a seat; switching to `confirmed` reserves one. The database rejects confirmation once group capacity is reached. Admin or manager may change booking and visa statuses using their row dropdowns.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Create **Visa cases** using the pilgrim and optional booking; choose country and group/individual visa type. Create **Tickets** using an optional booking; selecting it pre-fills the passenger and group/individual type. Add airline names to **Suppliers** to make them available as suggestions. Open a row's **View** panel to see linked names and booking details. A booking summary can be printed, but is not proof of payment; the finance receipt remains separate.
 
-## Deploy on Vercel
+Existing pilgrim, group and booking records remain unchanged. Old manually entered references still work. The workflow does not automatically raise an invoice from a booking: post a Customer invoice in Ledger if money is owed. Passport OCR, document uploads and automated WhatsApp remain future work.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Portal and passport registration (version 0.5)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/pages/building-your-application/deploying) for more details.
+Run `supabase/portal_v1.sql` after the previous three SQL scripts in the same project. It adds identity/contact fields and private read policies; it preserves existing records. Enter `SUPABASE_SERVICE_ROLE_KEY` in `.env.local` only on the Next.js server. Add `http://localhost:3000` to Supabase Authentication → URL Configuration → Redirect URLs, and set `NEXT_PUBLIC_APP_URL` to that address locally or to your HTTPS site when deployed. Restart `npm run dev` after changing environment variables.
+
+Pilgrim and agent forms can scan or upload a passport photo. OCR runs in the browser with Tesseract.js downloaded on first use (internet required); the photo is not stored or sent to this app server. Read the two MRZ lines at the bottom clearly. Check the resulting name, passport number and dates manually. Father name, national ID, address, email and mobile are entered manually because the passport MRZ does not reliably contain them.
+
+After adding a pilgrim or agent with email and phone, an admin/manager can generate a single-use portal invitation. The form attempts this automatically if the server key is configured; existing people have a **Create invite** button. A WhatsApp button opens a prefilled welcome and invitation URL. Staff must press Send in their WhatsApp. The person sets their own password on first visit; passwords are not sent in chat. Pilgrim and agent logins show only their own profile-related bookings and party ledger entries under RLS. The person can request a booking for an active package; the database sets the price and records it as an enquiry. The office confirms group seats and posts payments. The agent sees pilgrims linked to that agent. Do not reuse one email for multiple accounts.
+
+Booking creation/status and receipt posting offer prefilled WhatsApp messages after saving. Sending remains manual and free through the staff member's WhatsApp app. Automatic background WhatsApp delivery from a personal account is not provided. Use the official WhatsApp Business Platform for unattended sending and check its current pricing. The app cannot confirm that a manual chat was sent or delivered. Account links expire according to Supabase Auth settings; generate a new invitation/recovery link when needed.
+
+## Passport AI and pricing (version 0.6)
+
+Run `supabase/pricing_v1.sql` **after** `schema.sql`, `finance_v1.sql`, `booking_v1.sql`, and `portal_v1.sql` in the same Supabase project. The result should be `pricing_ready`. It keeps existing rows and does **not** backfill historical invoices. Take a database backup before running it on live accounts. Test with a new booking and check that its invoice appears once in Ledger.
+
+The passport form first tries enhanced local OCR on a cropped, high-contrast image of the lower MRZ. If it fails, choose **Try AI scan (optional)**. AI requires an OpenAI API key in server-only `.env.local` as `OPENAI_API_KEY`; usage is billed separately from ChatGPT and the passport image is sent to OpenAI only when that button is pressed. Do not add the key as `NEXT_PUBLIC_`. Check all extracted fields against the passport. A clean image and readable printed text help, but AI can still misread dates and numbers. The application does not store the uploaded image.
+
+Bookings have USD amount, USD→PKR exchange rate and a PKR total; a direct PKR amount can be entered if there is no USD figure. Choose **Bill to** pilgrim or the linked agent. A new booking with a positive amount generates one customer invoice in `krn_finance_entries`, including a portal enquiry. Visa and ticket entries have separate sale and supplier cost calculations. Select a supplier when cost is positive; a supplier bill is posted automatically. If the selling price is already included in the booking package, keep **Bill sale separately?** at **No** to avoid double charging. Select **Yes** only for an additional charge. The database computes USD × rate again and posts its ledger entries in the same transaction; if ledger posting fails, the source record is not saved. Payment receipts remain manual in Ledger and can be allocated to the generated invoice. Once a source document is saved, financial values are locked. Reverse incorrect invoices/bills and create a corrected source record. Existing old bookings and visa/ticket records are not automatically billed by this migration.
+
+## Quantity, booking service and route (version 0.7)
+
+Run `supabase/quantity_v1.sql` after `pricing_v1.sql` in the same project. It is additive: historical quantities default to one and existing money totals are not recalculated. It replaces the price, group-capacity and automatic invoice functions for future records; verify the final result `quantity_ready`. Do not run older scripts again afterward because they would overwrite these functions.
+
+In **Bookings**, choose a pilgrim and agent, then the service type: package, visa or airline ticket. For visas select one or more of Iran, Iraq, Syria, Saudi Arabia (including Select all); quantity means the total number of visas across the selected countries. For tickets enter origin, destination, airline and flight number, and the number of tickets. Unit USD × exchange rate × quantity or unit PKR × quantity calculates the total invoice. Billing can go to the pilgrim or the selected agent. Group capacity counts the quantity of confirmed seats.
+
+In **Visa cases** and **Tickets**, choose the pilgrim and agent, quantity, and separate unit sale and supplier cost amounts. The ticket can be linked to a booking or directly to a pilgrim. When a priced booking is selected, separate customer billing defaults to No; enable it only for an additional charge. Supplier cost still creates a supplier bill if an airline/embassy/company is selected. A direct visa/ticket sale defaults to a customer invoice. Historical rows are not invoiced retrospectively. Each record has one lead pilgrim; quantity is an accounting and seat count, not a named passenger roster.
